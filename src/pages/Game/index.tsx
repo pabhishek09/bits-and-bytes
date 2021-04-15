@@ -4,7 +4,7 @@ function Game() {
 
   return (
     <div>
-      <h3>Game page</h3>
+      <span className="tag is-primary">Game page</span>
     </div>
   );
 }
