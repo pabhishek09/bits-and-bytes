@@ -13,7 +13,7 @@ import './App.css';
 function App() {
 
   useEffect(() => {
-    fetch('./api/ping')
+    fetch('http://localhost:4000/api/ping')
     .then((data) => data.json())
     .then((response) => {
       console.log('API response', response);
@@ -27,21 +27,23 @@ function App() {
     <div className="app-container">
       <Router>
         <Navbar />
-        <div className="page-layout">
-          <section className="hero is-primary">
-            <div className="hero-body">
-              <p className="title">
-                Bits & Bytes
-              </p>
-              <p className="subtitle" id="subtitle"></p>
-            </div>
-          </section>
+        <div className="container page-layout">
           <Switch>
             <Route path="/game">
               <Game />
             </Route>
-            <Route path="/">
+            <Route path="/home">
               <Home />
+            </Route>
+            <Route path="/">
+              <section className="hero is-primary">
+                <div className="hero-body">
+                  <p className="title">
+                    web-storm
+                  </p>
+                  <p className="subtitle" id="subtitle"></p>
+                </div>
+              </section>
             </Route>
           </Switch>
         </div>

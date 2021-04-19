@@ -22,7 +22,7 @@ function Navbar() {
 
       <div id="navbarBasicExample" className="navbar-menu">
         <div className="navbar-start">
-          <Link className="navbar-item" to="/">Home</Link>
+          <Link className="navbar-item" to="/home">Home</Link>
           <Link className="navbar-item" to="/game">Game</Link>
         </div>
         <div className="navbar-end">
