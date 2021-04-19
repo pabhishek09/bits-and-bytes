@@ -40,3 +40,8 @@ Network exchange information between A & B -
 - Website design - Bulma ui-kit on figma
 - Develop core webrtc components
 - Identify plugins to be developed 
+
+### Flow 
+
+
+- Join a room 
