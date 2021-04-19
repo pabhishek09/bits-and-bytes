@@ -4,26 +4,30 @@ var path = require('path');
 var cookieParser = require('cookie-parser');
 var logger = require('morgan');
 var http = require('http');
-var cors = require('cors');
+var onIoConnect = require('./server/socket/index');
+// var cors = require('cors');
 
-var indexRouter = require('./routes/index');
+var router = require('./server/api/index');
+import router from './server/api';
 
 var app = express();
-var httpServer = http.createServer(app);
-var io = socketio(httpServer, {path: '/signal/'})
+var server = http.createServer(app);
 
-app.use(cors());
+var io = socketio(server, {
+  cors: {
+    origin: ['http://localhost:3000'],
+  },
+  path: '/signal/'
+});
+io.on('connection', onIoConnect);
+
+// app.use(cors());
 app.use(logger('dev'));
 app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
 app.use(cookieParser());
 app.use(express.static(path.join(__dirname, 'public')));
 
-app.use('/api', indexRouter);
-io.on('connection', (socket) => {
-  console.log('Connection established', socket);
-})
+app.use('/api', router);
 
-httpServer.listen('4000');
-
-module.exports = app;
+module.exports = server;

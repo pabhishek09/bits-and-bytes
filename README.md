@@ -1,9 +1,8 @@
 # web-storm
 
-Prototype for creating full fledged webRtc apps
+video conferencing app built with webRtc
 
-
-### components
+### Components
 
 - Socketio Signalling server to exchange metadata as SDP
 - ReactJS Frontend to implement P2P connection using RTCPeerConnection API
