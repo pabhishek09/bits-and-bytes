@@ -6,6 +6,7 @@ import {
 } from 'react-router-dom';
 import Home from './pages/Home';
 import Game from './pages/Game';
+import Meet from './pages/Meet';
 import Navbar from './components/Navbar';
 import 'bulma/css/bulma.min.css';
 import './App.css';
@@ -22,7 +23,6 @@ function App() {
     })
   }, []);
 
-
   return (
     <div className="app-container">
       <Router>
@@ -32,18 +32,11 @@ function App() {
             <Route path="/game">
               <Game />
             </Route>
-            <Route path="/home">
-              <Home />
+            <Route path="/meet/:id">
+              <Meet />
             </Route>
             <Route path="/">
-              <section className="hero is-primary">
-                <div className="hero-body">
-                  <p className="title">
-                    web-storm
-                  </p>
-                  <p className="subtitle" id="subtitle"></p>
-                </div>
-              </section>
+              <Home />
             </Route>
           </Switch>
         </div>

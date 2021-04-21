@@ -9,9 +9,6 @@ function Navbar() {
   return (
     <nav className="navbar" role="navigation" aria-label="main navigation">
       <div className="navbar-brand">
-        <button className="navbar-item">
-          <img src="https://img.icons8.com/cotton/452/bowling--v1.png"  alt="logo" width="48" height="48"/>
-        </button>
 
         <button className="navbar-burger" aria-label="menu" aria-expanded="false" data-target="navbarBasicExample">
           <span aria-hidden="true"></span>

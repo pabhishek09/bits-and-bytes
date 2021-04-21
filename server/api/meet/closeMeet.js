@@ -5,7 +5,7 @@ const closeMeetMethod = 'delete';
 function closeMeetHandler(req, res) {
   console.log('API:: Close Meet');
   const { id } = req.body;
-  if (!id) res.status(400).send('Missing fields');
+  if (!id) return res.status(400).send({msg: 'Missing fields'});
   res.send(close(id));
 }
 

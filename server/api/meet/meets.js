@@ -2,11 +2,16 @@ var meets = [];
 
 function get(id) {
   if (!id) return meets;
+  const index = indexOfMeet(id);
+  if (index > -1) {
+    return meets[index];
+  }
+  return '';
 }
 
-function add(inviter) {
+function add(host) {
   const meet = {
-    inviter,
+    host,
     id: makeId(),
   };
   meets.push(meet);
