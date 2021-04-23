@@ -13,10 +13,15 @@ function createSocket() {
     });
     socket.on('connect', () => {
       console.log('Socket client connected', socket.id);
-      socket = socket;
-      // socket.on('join-meet', (params: any) => {
-      //   console.log('Client:: new join meet event!!!');
+
+      // socket.on('start-meet-action', (params: any) => {
+      //   console.log('Socket Client:: start-meet-action');
       // });
+      // socket.on('join-meet-action', (params: any) => {
+      //   console.log('Socket Client:: join-meet-action');
+      // });
+
+      socket = socket;
       resolve(socket);
     })
   });
