@@ -8,7 +8,7 @@ function onIoConnect(socket) {
 
   socket.on('join-meet', (event) => {
     // id - room id of the meet
-    console.log('Socket Server :: join-meet');
+    console.log(':: Socket Server :: join-meet');
     socket.join(event.id);
     // broadcast to existing members that new person has joined
     socket.broadcast.to(event.id).emit('join-meet', { joinee_id: socket.id });
@@ -18,7 +18,7 @@ function onIoConnect(socket) {
     // request_by - socket id of existing participant
     // request_to - socket id of new participant
     // sdp - sdp of existing participant
-    console.log(`Socket Server :: sdp_request :: by ${event.request_by} to ${event.request_to}`);
+    console.log(`:: Socket Server :: sdp_request :: by ${event.request_by} to ${event.request_to}`);
     socket.broadcast.to(event.request_to).emit('sdp_request', event);
   });
 
@@ -26,12 +26,12 @@ function onIoConnect(socket) {
     // response_by: socket id of new participant
     // resonse_to: socket id of existing participant
     // sdp: sdp of existing participant
-    console.log(`Socket Server :: sdp_response :: by ${event.response_by} to ${event.resonse_to}`);
+    console.log(`:: Socket Server :: sdp_response :: by ${event.response_by} to ${event.resonse_to}`);
     socket.broadcast.to(event.resonse_to).emit('sdp_response', event);
   });
 
   socket.on('ice_candidate', (event) => {
-    console.log(`Broadcasting webrtc_ice_candidate event to peers in room ${event.id}`)
+    console.log(`:: Broadcasting webrtc_ice_candidate event to peers in room ${event.id}`)
     socket.broadcast.to(event.id).emit('new_ice_candidate', event);
   })
 

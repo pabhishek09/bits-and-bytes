@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React from 'react';
 import {
   BrowserRouter as Router,
   Switch,
@@ -12,16 +12,6 @@ import 'bulma/css/bulma.min.css';
 import './App.css';
 
 function App() {
-
-  useEffect(() => {
-    fetch('http://localhost:4000/api/ping')
-    .then((data) => data.json())
-    .then((response) => {
-      console.log('API response', response);
-      const subtitleEl = document.getElementById('subtitle');
-      if (subtitleEl) subtitleEl.innerHTML = response.data;
-    })
-  }, []);
 
   return (
     <div className="app-container">

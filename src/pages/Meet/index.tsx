@@ -1,5 +1,6 @@
-import React, { useEffect } from 'react';
-import { getSocket } from '../../socket';
+import React, { useEffect, useState } from 'react';
+import Feed from '../../components/Feed';
+import getSocket from '../../socket';
 import { useParams, useHistory } from "react-router-dom";
 import './style.css';
 
@@ -27,8 +28,6 @@ function Meet() {
     video: true, // Specify video resolution per requirements
   };
   let isHost: Boolean;
-  let remoteUsers;
-
   let sdpRequestParams = {
     request_to: '', 
     request_by: '',
@@ -36,14 +35,18 @@ function Meet() {
 
   useEffect(() => {
     setUpMeet().then(() => {
-      console.log('Meeting is set');
+      console.log(':: setUpMeet is resolved ::');
     });
   }, []);
 
+  const [ participants, setParticipants ] = useState([] as Array<Number>);
+
   async function setUpMeet() {
+    console.log(':: setUpMeet ::');
     await validateMeet();
     socket = await getSocket();
     isHost = socket.id === meetDetails.host;
+    console.log(`:: isHost ::  ${isHost}`)
     initiateMeetSignalling();
   }
 
@@ -52,7 +55,6 @@ function Meet() {
     else {
       const meet = await getMeet(id);
       if (!meet.data) return history.push('/');
-      console.log({meet});
       meetDetails = meet.data;
     }
   }
@@ -63,6 +65,7 @@ function Meet() {
   }
 
   function initiateMeetSignalling() {
+    console.log(':: initiateMeetSignalling ::');
     isHost ? socket.emit('start-meet', meetDetails) : socket.emit('join-meet', meetDetails);
     socket.on('start-meet', () => {
       createPeerConnection();
@@ -71,7 +74,7 @@ function Meet() {
 
     // Fired to existing participant when a new participant joins
     socket.on('join-meet', ({ joinee_id }:  any) => {
-      console.log('Client socket :: join-meet',  joinee_id);
+      console.log(':: Client socket :: join-meet',  joinee_id);
       // Send the local rtc description to new participant
       socket.emit('sdp_request', {
         request_by: socket.id, 
@@ -82,14 +85,14 @@ function Meet() {
 
     // sdp request for new participant by an exiting participant
     socket.on('sdp_request', (params: any) => {
-      console.log('Client socket :: sdp_request',  params);
+      console.log(':: Client socket :: sdp_request',  params);
       const { request_to, request_by } = params;
       sdpRequestParams = { request_to, request_by };
       onSdpRequest(params.sdp);
     });
 
     socket.on('sdp_response', (params: any) => {
-      console.log('Client socket :: sdp_response',  params);
+      console.log(':: Client socket :: sdp_response',  params);
       onSdpResponse(params.sdp);
     });
 
@@ -97,19 +100,15 @@ function Meet() {
   }
 
   function onSdpRequest(sdp: any) {
-    console.log('::onSdpRequest::');
-    createPeerConnection();
-    setUpUserMedia();
+    console.log(':: onSdpRequest ::');
+    if (!peerConnection )createPeerConnection();
+    if (!localMediaStream) setUpUserMedia();
     const sessionDesc = new RTCSessionDescription(sdp);
-    console.log({
-      sdp,
-      sessionDesc
-    });
     peerConnection.setRemoteDescription(sessionDesc)
-      // .then(() => setUpUserMedia())
       .then(() => peerConnection.createAnswer())
       .then((answer) => {
         peerConnection.setLocalDescription(answer);
+        console.log(':: onSdpRequest :: Local request is set, sending response ::')
         socket.emit('sdp_response', { 
           response_by: sdpRequestParams.request_to,
           resonse_to: sdpRequestParams.request_by,
@@ -119,7 +118,7 @@ function Meet() {
   }
 
   function onSdpResponse(sdp: any) {
-    console.log('::onSdpResponse::');
+    console.log(':: onSdpResponse ::');
     const sessionDesc = new RTCSessionDescription(sdp);
     peerConnection.setRemoteDescription(sessionDesc);
   }
@@ -127,7 +126,7 @@ function Meet() {
   function createPeerConnection(): void {
     try {
       peerConnection = new RTCPeerConnection(pcConfig);
-      console.info('PeerConnection :: Registering event handlers');
+      console.info(':: createPeerConnection :: registering event handlers');
       peerConnection.addEventListener('icecandidate', handleIceCanditate);
       peerConnection.addEventListener('track', handleTrack);
       peerConnection.addEventListener('negotiationneeded', handleNegotiationNeeded);
@@ -141,10 +140,12 @@ function Meet() {
   }
 
   function setUpUserMedia(): void {
+    console.log(':: setUpUserMedia ::');
     navigator.getUserMedia(constraints, successCallback, errorCallback);
   }
   
   function successCallback(mediastream: MediaStream): void {
+    console.log(':: successCallback ::');
     localMediaStream = mediastream;
     const videoEl = document.getElementById('user-video') as HTMLMediaElement;
     if (videoEl) videoEl.srcObject = localMediaStream;
@@ -152,7 +153,7 @@ function Meet() {
   }
 
   function errorCallback(error: MediaStreamError): void {
-    console.error(error);
+    console.log(':: errorCallback ::', errorCallback);
     switch(error.name) {
       case 'NotFoundError':
         console.info('Unable to open your call because no camera and/or microphone were found');
@@ -188,7 +189,7 @@ function Meet() {
   }
 
   function onNewIceCanditate(event: any) {
-    console.log('::onNewIceCanditate::', event);
+    console.log(':: onNewIceCanditate ::', event);
     var canditate = new RTCIceCandidate(event.candidate);
     peerConnection
       .addIceCandidate(canditate)
@@ -199,7 +200,7 @@ function Meet() {
   
   // negotiationneeded event is fired when tracks are added to a RTCPeerConnection 
   function handleNegotiationNeeded(event: any) {
-    console.log('On negotation neededd event was fired',  event);
+    console.log(':: handleNegotiationNeeded ::',  event);
     // Create a SDP offer to be sent
     if (isHost) {
       peerConnection.createOffer().then((offer) => {
@@ -210,48 +211,50 @@ function Meet() {
   }
   
   function handleRemoveTrack(event: any) {
-    console.log('Handle removing track', event);
+    console.log(':: handleRemoveTrack ::', event);
   }
   
   function handleTrack(event: any) {
-    console.log('Handle track', event);
-    const videoEl = document.getElementById('remote-video') as HTMLMediaElement;
+    console.log(':: handleTrack ::', event);
+    setParticipants([ ...participants, participants.length + 1]);
+    const videoEl = document.getElementById('remote-video-1') as HTMLMediaElement;
     if (videoEl) videoEl.srcObject = event.streams[0];
   }
   
   function handleIceCanditate(event: any) {
-    console.log('::handleIceCanditate::', event);
+    console.log(':: handleIceCanditate ::', event);
     if (event.candidate) socket.emit('ice_candidate', { id, candidate: event.candidate });
   }
   
   function handleIceConnectionChange(event: any): void {
-    console.log('::handleIceConnectionChange::',  event);
+    console.log(':: handleIceConnectionChange ::',  event);
   }
   
   function handleIceGatheringStateChange(event: any): void {
-    console.log('::handleiccegatheringstatechange', event);
+    console.log(':: handleiccegatheringstatechange ', event);
   }
   
   function handleSignalingStateChangeEvent(event: any): void {
-    console.log('::handle')
+    console.log(':: handleSignalingStateChangeEvent ::')
   }
 
+  function RemoteFeed(props:  any) {
+    return props.participants.map((index: number) => <Feed
+      isHost='false'
+      key={`remote-feed-${index}`} 
+      idAttr={`remote-video-${index}`} 
+    />);
+  }
   
   return (
     <div>
-      <div className="buttons">
+      <div className="buttons is-flex is-justify-content-center is-align-content-center is-align-items-center group-video">
         <button className="button is-warning" onClick={toggleVideo}>Toggle video</button>
         <button className="button is-warning" onClick={toggleAudio}>Toggle audio</button>
       </div>
-      <div className="columns group-video">
-        <div className="column user-feed">
-          <span className="tag is-info has-text-weight-medium">Host</span>
-          <video height="400" width="600" id="user-video" autoPlay playsInline></video>
-        </div>
-        <div className="column remote-feed">
-        <span className="tag is-info has-text-weight-medium">Participant</span>
-          <video height="400" width="600" id="remote-video" autoPlay playsInline></video>    
-        </div>
+      <div className="is-flex is-justify-content-center is-align-content-center is-align-items-center group-video">
+        <Feed isHost='true' idAttr='user-video' />
+        <RemoteFeed  participants={participants}/>
       </div>
     </div>
   )
