@@ -1,7 +1,5 @@
 import React from 'react';
 import './style.css';
-import PersonIcon from '@material-ui/icons/Person';
-import PersonOutlineIcon from '@material-ui/icons/PersonOutline';
 
 function Feed(props: any) {
 
