@@ -30,9 +30,12 @@ function onIoConnect(socket) {
     socket.broadcast.to(event.resonse_to).emit('sdp_response', event);
   });
 
-  socket.on('ice_candidate', (event) => {
-    console.log(`:: Broadcasting webrtc_ice_candidate event to peers in room ${event.id}`)
-    socket.broadcast.to(event.id).emit('new_ice_candidate', event);
+  socket.on('new_ice_candidate', (event) => {
+    // canditate_by: socket id of sender
+    // canditate_to: socket id of connection
+    // candidate: ice canditate
+    console.log(`:: Broadcasting new_ice_candidate by ${event.canditate_by} to ${event.canditate_to}`);
+    socket.broadcast.to(event.canditate_to).emit('new_ice_candidate', event);
   })
 
 }
