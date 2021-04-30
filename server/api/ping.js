@@ -1,5 +1,5 @@
 function ping(req, res) {
-  res.send({ data: 'API says :: web-storm!' });
+  res.send({ data: ':: ping ::' });
 }
 
 module.exports = ping;

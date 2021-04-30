@@ -1,5 +1,6 @@
-import React, { useEffect } from 'react';
-import { getSocket } from '../../socket';
+import React, { useEffect, useState } from 'react';
+import Feed from '../../components/Feed';
+import getSocket from '../../socket';
 import { useParams, useHistory } from "react-router-dom";
 import './style.css';
 
@@ -9,7 +10,7 @@ function Meet() {
   const { id }  = useParams() as any;
   let meetDetails: any;
   const history = useHistory();
-  let peerConnection: RTCPeerConnection;
+  let peerConnections: Array<RTCPeerConnection> = [];
   let localMediaStream: MediaStream;
   const pcConfig: RTCConfiguration = {
     iceServers: [
@@ -17,9 +18,6 @@ function Meet() {
       // for a custom implementation of stun/turn servers
       { urls: 'stun:stun.l.google.com:19302' },
       { urls: 'stun:stun1.l.google.com:19302' },
-      { urls: 'stun:stun2.l.google.com:19302' },
-      { urls: 'stun:stun3.l.google.com:19302' },
-      { urls: 'stun:stun4.l.google.com:19302' },
     ]
   };
   const constraints: MediaStreamConstraints = {
@@ -27,23 +25,29 @@ function Meet() {
     video: true, // Specify video resolution per requirements
   };
   let isHost: Boolean;
-  let remoteUsers;
 
-  let sdpRequestParams = {
-    request_to: '', 
-    request_by: '',
-  };
+  const participants: Array<string> = [];
+  const [ participantCount, setParticipantCount ] = useState<number>(0);
+  const [ remoteFeed, setRemoteFeed ] = useState<Array<JSX.Element>>([])
 
   useEffect(() => {
-    setUpMeet().then(() => {
-      console.log('Meeting is set');
-    });
+    setUpMeet()
   }, []);
 
+  useEffect(() => {
+    if (participantCount > 0) {
+      const index = participantCount - 1;
+      const newFeed = <Feed isHost='false' key={`remote-feed-${index}`} idAttr={`remote-video-${index}`}/>;
+      setRemoteFeed([ ...remoteFeed, newFeed]);
+    }
+  }, [participantCount]);
+
   async function setUpMeet() {
+    console.log(':: setUpMeet ::');
     await validateMeet();
     socket = await getSocket();
     isHost = socket.id === meetDetails.host;
+    console.log(`:: isHost ::  ${isHost}`)
     initiateMeetSignalling();
   }
 
@@ -52,7 +56,6 @@ function Meet() {
     else {
       const meet = await getMeet(id);
       if (!meet.data) return history.push('/');
-      console.log({meet});
       meetDetails = meet.data;
     }
   }
@@ -63,96 +66,142 @@ function Meet() {
   }
 
   function initiateMeetSignalling() {
+    console.log(':: initiateMeetSignalling ::');
     isHost ? socket.emit('start-meet', meetDetails) : socket.emit('join-meet', meetDetails);
-    socket.on('start-meet', () => {
-      createPeerConnection();
-      setUpUserMedia();
-    });
-
-    // Fired to existing participant when a new participant joins
-    socket.on('join-meet', ({ joinee_id }:  any) => {
-      console.log('Client socket :: join-meet',  joinee_id);
-      // Send the local rtc description to new participant
-      socket.emit('sdp_request', {
-        request_by: socket.id, 
-        request_to: joinee_id,
-        sdp: peerConnection.localDescription,  
-      });
-    });
-
-    // sdp request for new participant by an exiting participant
-    socket.on('sdp_request', (params: any) => {
-      console.log('Client socket :: sdp_request',  params);
-      const { request_to, request_by } = params;
-      sdpRequestParams = { request_to, request_by };
-      onSdpRequest(params.sdp);
-    });
-
-    socket.on('sdp_response', (params: any) => {
-      console.log('Client socket :: sdp_response',  params);
-      onSdpResponse(params.sdp);
-    });
-
+    socket.on('start-meet', setUpUserMedia);
+    socket.on('join-meet', onNewParticipant);
+    socket.on('sdp_request', onSdpRequest);
+    socket.on('sdp_response', onSdpResponse);
     socket.on('new_ice_candidate', onNewIceCanditate)
   }
 
-  function onSdpRequest(sdp: any) {
-    console.log('::onSdpRequest::');
-    createPeerConnection();
-    setUpUserMedia();
-    const sessionDesc = new RTCSessionDescription(sdp);
-    console.log({
-      sdp,
-      sessionDesc
-    });
-    peerConnection.setRemoteDescription(sessionDesc)
-      // .then(() => setUpUserMedia())
-      .then(() => peerConnection.createAnswer())
+  async function onNewParticipant({ joinee_id } : any) {
+    participants.push(joinee_id);
+    setParticipantCount(participants.length);
+    console.log(':: onNewParticipant ::', {joinee_id, participants, participantCount});
+    const newParticipantIndex = participants.length-1;
+    await createPeerConnection(newParticipantIndex);
+    streamLocalMedia(newParticipantIndex);
+  }
+
+  async function onSdpRequest(params: any) {
+    console.log(':: onSdpRequest ::', { request_to: params.request_to, request_by: params.request_by});
+    participants.push(params.request_by);
+    setParticipantCount(participants.length);
+    const pcIndex = participants.length - 1;
+    await createPeerConnection(pcIndex);
+    peerConnections[pcIndex]
+      .setRemoteDescription(new RTCSessionDescription(params.sdp))
+      .then(() => setUpUserMedia())
+      .then(() => streamLocalMedia(pcIndex))
+      .then(() => peerConnections[pcIndex].createAnswer())
       .then((answer) => {
-        peerConnection.setLocalDescription(answer);
+        peerConnections[pcIndex].setLocalDescription(answer);
         socket.emit('sdp_response', { 
-          response_by: sdpRequestParams.request_to,
-          resonse_to: sdpRequestParams.request_by,
+          response_by: params.request_to,
+          resonse_to: params.request_by,
           sdp: answer,
         });
       })
   }
 
-  function onSdpResponse(sdp: any) {
-    console.log('::onSdpResponse::');
-    const sessionDesc = new RTCSessionDescription(sdp);
-    peerConnection.setRemoteDescription(sessionDesc);
+  function streamLocalMedia(pcIndex: number)  {
+    localMediaStream.getTracks()
+    .forEach(track => peerConnections[pcIndex].addTrack(track, localMediaStream));
   }
 
-  function createPeerConnection(): void {
+  function onSdpResponse(event: any) {
+    const pcIndex = participants.indexOf(event.response_by);
+    console.log(':: onSdpResponse ::', pcIndex);
+    peerConnections[pcIndex].setRemoteDescription(new RTCSessionDescription(event.sdp));
+  }
+
+  function onNewIceCanditate(event: any) {
+    const { canditate_by } = event;
+    const pcIndex = participants.indexOf(canditate_by);
+    console.log(':: onNewIceCanditate ::', {canditate_by, pcIndex});
+    if (pcIndex > -1) {
+      peerConnections[pcIndex]
+      .addIceCandidate(new RTCIceCandidate(event.candidate))
+      .catch((err) => {
+        console.log({err});
+      });
+    }
+  } 
+
+  async function createPeerConnection(pcIndex: number): Promise<void> {
     try {
-      peerConnection = new RTCPeerConnection(pcConfig);
-      console.info('PeerConnection :: Registering event handlers');
-      peerConnection.addEventListener('icecandidate', handleIceCanditate);
-      peerConnection.addEventListener('track', handleTrack);
-      peerConnection.addEventListener('negotiationneeded', handleNegotiationNeeded);
-      // peerConnection.addEventListener('removetrack', handleRemoveTrack);
-      // peerConnection.addEventListener('iceconnectionstatechange', handleIceConnectionChange);
-      // peerConnection.addEventListener('icegatheringstatechange', handleIceGatheringStateChange);
-      // peerConnection.addEventListener('signalingstatechange', handleSignalingStateChangeEvent);
+      const peerConnection = new RTCPeerConnection(pcConfig);
+      console.info(`:: createPeerConnection with index ${pcIndex} ::`);
+      peerConnection.onicecandidate = (event) => handleIceCanditate(pcIndex, event);
+      peerConnection.ontrack = (event) => handleTrack(pcIndex, event);
+      peerConnection.onnegotiationneeded = (event) => handleNegotiationNeeded(pcIndex, event);
+      peerConnection.oniceconnectionstatechange = (event) => handleICEConnectionStateChange(pcIndex, event);
+      peerConnection.onicegatheringstatechange = (event) => handleICEGatheringStateChange(pcIndex, event);
+      peerConnection.onsignalingstatechange = (event) => handleSignalingStateChange(pcIndex, event);
+      peerConnections.push(peerConnection);
+      return;
     } catch (err) {
       console.error('Error in creating peer connection')
     }
   }
 
-  function setUpUserMedia(): void {
-    navigator.getUserMedia(constraints, successCallback, errorCallback);
+  function handleIceCanditate(pcIndex: number, event: RTCPeerConnectionIceEvent) {
+    console.log(`:: handleIceCanditate ::  for ${pcIndex}`);
+    if (event.candidate) socket.emit('new_ice_candidate', { 
+      canditate_by: socket.id,
+      canditate_to: participants[pcIndex],
+      candidate: event.candidate 
+    });
   }
-  
-  function successCallback(mediastream: MediaStream): void {
-    localMediaStream = mediastream;
-    const videoEl = document.getElementById('user-video') as HTMLMediaElement;
-    if (videoEl) videoEl.srcObject = localMediaStream;
-    localMediaStream.getTracks().forEach(track => peerConnection.addTrack(track, localMediaStream));
+
+  function handleTrack(pcIndex: number, event: any) {
+    const videoElId = `remote-video-${pcIndex}`;
+    console.log(`:: handleTrack for ${pcIndex} :: ${videoElId}`);
+    const videoEl = document.getElementById(videoElId) as HTMLMediaElement;
+    if (videoEl) videoEl.srcObject = event.streams[0];
+  }
+
+  function handleNegotiationNeeded(pcIndex: number, event: any) {
+    console.log(`:: handleNegotiationNeeded  for index ${pcIndex}::`, participants);
+    peerConnections[pcIndex]
+    .createOffer()
+    .then((offer) => peerConnections[pcIndex].setLocalDescription(offer))
+    .then(() => {
+      socket.emit('sdp_request', {
+        request_by: socket.id, 
+        request_to: participants[pcIndex],
+        sdp: peerConnections[pcIndex].localDescription,  
+      });
+    })
+  }
+
+  function handleICEConnectionStateChange(pcIndex: number, event: any) {
+    console.log(`:: handleICEConnectionStateChangeEvent for index ${pcIndex}::`);
+  }
+
+  function handleICEGatheringStateChange(pcIndex: number, event: any) {
+    console.log(`:: handleICEGatheringStateChangeEvent for index ${pcIndex}::`);
+  }
+
+  function handleSignalingStateChange(pcIndex: number, event: any) {
+    console.log(`::  for index ${pcIndex}::`);
+  }
+
+  async function setUpUserMedia(): Promise<void> {
+    console.log(':: setUpUserMedia ::');
+    try {
+      if (!localMediaStream) localMediaStream = await navigator.mediaDevices.getUserMedia(constraints);
+      const videoEl = document.getElementById('user-video') as HTMLMediaElement;
+      if (videoEl) videoEl.srcObject = localMediaStream;
+      return;
+    } catch (err) {
+      errorCallback(err);
+    }
   }
 
   function errorCallback(error: MediaStreamError): void {
-    console.error(error);
+    console.log(':: errorCallback ::', errorCallback);
     switch(error.name) {
       case 'NotFoundError':
         console.info('Unable to open your call because no camera and/or microphone were found');
@@ -186,72 +235,17 @@ function Meet() {
       }
     }
   }
-
-  function onNewIceCanditate(event: any) {
-    console.log('::onNewIceCanditate::', event);
-    var canditate = new RTCIceCandidate(event.candidate);
-    peerConnection
-      .addIceCandidate(canditate)
-      .catch((err) => {
-        console.log({err});
-      });
-  }
-  
-  // negotiationneeded event is fired when tracks are added to a RTCPeerConnection 
-  function handleNegotiationNeeded(event: any) {
-    console.log('On negotation neededd event was fired',  event);
-    // Create a SDP offer to be sent
-    if (isHost) {
-      peerConnection.createOffer().then((offer) => {
-        // Sets local description of the connection including the media format
-        return peerConnection.setLocalDescription(offer);
-      });
-    }
-  }
-  
-  function handleRemoveTrack(event: any) {
-    console.log('Handle removing track', event);
-  }
-  
-  function handleTrack(event: any) {
-    console.log('Handle track', event);
-    const videoEl = document.getElementById('remote-video') as HTMLMediaElement;
-    if (videoEl) videoEl.srcObject = event.streams[0];
-  }
-  
-  function handleIceCanditate(event: any) {
-    console.log('::handleIceCanditate::', event);
-    if (event.candidate) socket.emit('ice_candidate', { id, candidate: event.candidate });
-  }
-  
-  function handleIceConnectionChange(event: any): void {
-    console.log('::handleIceConnectionChange::',  event);
-  }
-  
-  function handleIceGatheringStateChange(event: any): void {
-    console.log('::handleiccegatheringstatechange', event);
-  }
-  
-  function handleSignalingStateChangeEvent(event: any): void {
-    console.log('::handle')
-  }
-
-  
+    
   return (
     <div>
-      <div className="buttons">
+      <div className="buttons is-flex is-justify-content-center is-align-content-center is-align-items-center">
         <button className="button is-warning" onClick={toggleVideo}>Toggle video</button>
         <button className="button is-warning" onClick={toggleAudio}>Toggle audio</button>
       </div>
-      <div className="columns group-video">
-        <div className="column user-feed">
-          <span className="tag is-info has-text-weight-medium">Host</span>
-          <video height="400" width="600" id="user-video" autoPlay playsInline></video>
-        </div>
-        <div className="column remote-feed">
-        <span className="tag is-info has-text-weight-medium">Participant</span>
-          <video height="400" width="600" id="remote-video" autoPlay playsInline></video>    
-        </div>
+      <p>Other participants : {participantCount}</p>
+      <div id="video-tiles" className="is-flex is-justify-content-center is-align-content-center is-align-items-center">
+        <Feed isHost='true' idAttr='user-video' />
+        <>{remoteFeed}</>
       </div>
     </div>
   )

@@ -1,5 +1,5 @@
 import React from 'react';
-import { getSocket } from '../../socket';
+import getSocket from '../../socket';
 import { useHistory } from 'react-router-dom';
 
 import './style.css';
@@ -10,14 +10,14 @@ function Home() {
   const history = useHistory();
 
   async function createMeet() {
+    console.log(':: createMeet ::');
     const { id } = await createRoom();
     history.push(`/meet/${id}`);
-    console.log(id);
   }
 
   async function createRoom() {
+    console.log(':: createRoom ::');
     const socket =  await getSocket();
-    console.log('*', socket.id);
     return fetch('http://localhost:4000/api/meet', {
       method: 'POST',
       body: JSON.stringify({ host: socket.id }),
