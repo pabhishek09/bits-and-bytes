@@ -18,9 +18,6 @@ function Meet() {
       // for a custom implementation of stun/turn servers
       { urls: 'stun:stun.l.google.com:19302' },
       { urls: 'stun:stun1.l.google.com:19302' },
-      { urls: 'stun:stun2.l.google.com:19302' },
-      { urls: 'stun:stun3.l.google.com:19302' },
-      { urls: 'stun:stun4.l.google.com:19302' },
     ]
   };
   const constraints: MediaStreamConstraints = {
@@ -29,15 +26,21 @@ function Meet() {
   };
   let isHost: Boolean;
 
-  // const [ participants, setParticipants ] = useState<Array<string>>([]);
-
   const participants: Array<string> = [];
   const [ participantCount, setParticipantCount ] = useState<number>(0);
+  const [ remoteFeed, setRemoteFeed ] = useState<Array<JSX.Element>>([])
 
   useEffect(() => {
     setUpMeet()
   }, []);
 
+  useEffect(() => {
+    if (participantCount > 0) {
+      const index = participantCount - 1;
+      const newFeed = <Feed isHost='false' key={`remote-feed-${index}`} idAttr={`remote-video-${index}`}/>;
+      setRemoteFeed([ ...remoteFeed, newFeed]);
+    }
+  }, [participantCount]);
 
   async function setUpMeet() {
     console.log(':: setUpMeet ::');
@@ -76,22 +79,24 @@ function Meet() {
     participants.push(joinee_id);
     setParticipantCount(participants.length);
     console.log(':: onNewParticipant ::', {joinee_id, participants, participantCount});
-    await createPeerConnection();
-    streamLocalMedia(peerConnections.length -1);
+    const newParticipantIndex = participants.length-1;
+    await createPeerConnection(newParticipantIndex);
+    streamLocalMedia(newParticipantIndex);
   }
 
   async function onSdpRequest(params: any) {
-    console.log(':: onSdpRequest ::', { response_to: params.request_to, resonse_by: params.request_by});
+    console.log(':: onSdpRequest ::', { request_to: params.request_to, request_by: params.request_by});
     participants.push(params.request_by);
     setParticipantCount(participants.length);
-    createPeerConnection(true);
-    peerConnections[peerConnections.length - 1]
+    const pcIndex = participants.length - 1;
+    await createPeerConnection(pcIndex);
+    peerConnections[pcIndex]
       .setRemoteDescription(new RTCSessionDescription(params.sdp))
       .then(() => setUpUserMedia())
-      .then(() => streamLocalMedia(peerConnections.length -1))
-      .then(() => peerConnections[peerConnections.length - 1].createAnswer())
+      .then(() => streamLocalMedia(pcIndex))
+      .then(() => peerConnections[pcIndex].createAnswer())
       .then((answer) => {
-        peerConnections[peerConnections.length - 1].setLocalDescription(answer);
+        peerConnections[pcIndex].setLocalDescription(answer);
         socket.emit('sdp_response', { 
           response_by: params.request_to,
           resonse_to: params.request_by,
@@ -124,15 +129,16 @@ function Meet() {
     }
   } 
 
-  async function createPeerConnection(avoidHandleNegotiation?: boolean): Promise<void> {
+  async function createPeerConnection(pcIndex: number): Promise<void> {
     try {
-      const pcIndex = peerConnections.length;
       const peerConnection = new RTCPeerConnection(pcConfig);
       console.info(`:: createPeerConnection with index ${pcIndex} ::`);
-      peerConnection.addEventListener('icecandidate', (event) => handleIceCanditate(pcIndex, event));
-      peerConnection.addEventListener('track', (event) => handleTrack(pcIndex, event));
-      // Hack to avoid firing sdp connection requests 
-      if (!avoidHandleNegotiation) peerConnection.addEventListener('negotiationneeded', (event) => handleNegotiationNeeded(pcIndex, event));
+      peerConnection.onicecandidate = (event) => handleIceCanditate(pcIndex, event);
+      peerConnection.ontrack = (event) => handleTrack(pcIndex, event);
+      peerConnection.onnegotiationneeded = (event) => handleNegotiationNeeded(pcIndex, event);
+      peerConnection.oniceconnectionstatechange = (event) => handleICEConnectionStateChange(pcIndex, event);
+      peerConnection.onicegatheringstatechange = (event) => handleICEGatheringStateChange(pcIndex, event);
+      peerConnection.onsignalingstatechange = (event) => handleSignalingStateChange(pcIndex, event);
       peerConnections.push(peerConnection);
       return;
     } catch (err) {
@@ -141,7 +147,7 @@ function Meet() {
   }
 
   function handleIceCanditate(pcIndex: number, event: RTCPeerConnectionIceEvent) {
-    console.log(':: handleIceCanditate ::');
+    console.log(`:: handleIceCanditate ::  for ${pcIndex}`);
     if (event.candidate) socket.emit('new_ice_candidate', { 
       canditate_by: socket.id,
       canditate_to: participants[pcIndex],
@@ -150,8 +156,9 @@ function Meet() {
   }
 
   function handleTrack(pcIndex: number, event: any) {
-    console.log(`:: handleTrack for ${pcIndex} ::`);
-    const videoEl = document.getElementById(`remote-video-${pcIndex}`) as HTMLMediaElement;
+    const videoElId = `remote-video-${pcIndex}`;
+    console.log(`:: handleTrack for ${pcIndex} :: ${videoElId}`);
+    const videoEl = document.getElementById(videoElId) as HTMLMediaElement;
     if (videoEl) videoEl.srcObject = event.streams[0];
   }
 
@@ -167,6 +174,18 @@ function Meet() {
         sdp: peerConnections[pcIndex].localDescription,  
       });
     })
+  }
+
+  function handleICEConnectionStateChange(pcIndex: number, event: any) {
+    console.log(`:: handleICEConnectionStateChangeEvent for index ${pcIndex}::`);
+  }
+
+  function handleICEGatheringStateChange(pcIndex: number, event: any) {
+    console.log(`:: handleICEGatheringStateChangeEvent for index ${pcIndex}::`);
+  }
+
+  function handleSignalingStateChange(pcIndex: number, event: any) {
+    console.log(`::  for index ${pcIndex}::`);
   }
 
   async function setUpUserMedia(): Promise<void> {
@@ -199,8 +218,6 @@ function Meet() {
     }
   }
   
-
-
   function toggleVideo(): void {
     if (localMediaStream) {
       const videoTracks = localMediaStream.getVideoTracks();
@@ -218,26 +235,17 @@ function Meet() {
       }
     }
   }
-  
-  function RemoteFeed({participants}: any) {
-    const participantArray = new Array(participants).fill(0);
-    return<>{participantArray.map((participant: string, index: number) => <Feed
-      isHost='false'
-      key={`remote-feed-${index}`} 
-      idAttr={`remote-video-${index}`} 
-    />)}</>
-  }
-  
+    
   return (
     <div>
-      <div className="buttons is-flex is-justify-content-center is-align-content-center is-align-items-center group-video">
+      <div className="buttons is-flex is-justify-content-center is-align-content-center is-align-items-center">
         <button className="button is-warning" onClick={toggleVideo}>Toggle video</button>
         <button className="button is-warning" onClick={toggleAudio}>Toggle audio</button>
       </div>
       <p>Other participants : {participantCount}</p>
-      <div className="is-flex is-justify-content-center is-align-content-center is-align-items-center group-video">
+      <div id="video-tiles" className="is-flex is-justify-content-center is-align-content-center is-align-items-center">
         <Feed isHost='true' idAttr='user-video' />
-        <RemoteFeed participants={participantCount}/>
+        <>{remoteFeed}</>
       </div>
     </div>
   )
